@@ -264,9 +264,14 @@
            //Define Initial Page Values
            var  scene_total = 3;                   // Total Number of "Slides" in Narrative 
            var  start_date = '12/31/2019';         // First date where data is available
-           var  current_country = 'World'          // Create the default country for initial plots 
-           
-           
+           var  current_country = 'World';          // Create the default country for initial plots 
+
+           //Annotation Related 
+           var  anno_first_death = {'date': '', 'xpos': 0, 'ypos_line': 0, 'ypos_anno': 0};  // This will hold the date of the first death for the current location/coutry
+           var  anno_first_case  = '';                // This will hold the date of the first case for the current location / country 
+           var  anno_response_ramp_up = '';           // This will hold the date of the first time stringency exceeds 20%
+           var  anno_response_max='';                 // This will hold the date of the maximum response for the location / country
+           var  anno_response_ramp_down = '';         // This will hold the date of the first time stringency decreased by 20 pts from the maximum 
            
            //Define State Values 
            var  scene_current = 0;                 // Keep track of the current page 
@@ -287,7 +292,8 @@
            //Define Files Required 
            var  file_covid_data = "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv?raw=true";            //This file contains the COVID raw data 
            var  file_page_intro =  "https://raw.githubusercontent.com/beyerch/CS498DV_Narrative/master/data/nv_page_headers.csv";                    //This file contains metadata for each slide/page
-           var  file_annotations = "https://raw.githubusercontent.com/beyerch/CS498DV_Narrative/master/data/nv_page_annotations.csv";                //This file contains annotations by page & date 
+           //var  file_annotations = "https://raw.githubusercontent.com/beyerch/CS498DV_Narrative/master/data/nv_page_annotations.csv";                //This file contains annotations by page & date 
+           var  file_annotations = "nv_page_annotations.csv";                //This file contains annotations by page & date 
            var  file_world_map =  "https://raw.githubusercontent.com/beyerch/CS498DV_Narrative/master/data/WorldMap.json";                           //World Map Raw Data 
            var  file_country_list = "https://raw.githubusercontent.com/beyerch/CS498DV_Narrative/master/data/CountryList.tsv";                       //Country List for Map / COVID Data Lookup 
            
@@ -498,12 +504,12 @@
                  // filter data to the current country 
                  graph_data_covid = data_covid.filter(function(record) { return record.location == current_country; });
                  
+                 
                  graph_data_covid.forEach(function(d) {
                            d.date = new Date(d.date); // d3.timeParse("%Y/%m/%d")(d.date);
                            d.total_deaths = +d.total_deaths;
                            d.total_cases = +d.total_cases;
                            d.stringency_index = +d.stringency_index
-                          
                            //console.log('Date is ' + d.date + ', Total Deaths are : ' + d.total_deaths);
                         });
 
@@ -536,55 +542,48 @@
                      .duration(50)
                      .style("opacity", 1);
               }
+
+
+
+              // Set the appropriate Y - Scaling 
+              y.domain([0, d3.max(graph_data_covid, function(d) 
+                   { 
+                      switch (scene_current)
+                         {
+                          case 1:
+                              return d.total_cases;
+                          case 2: 
+                              return d.total_deaths;
+                          case 3:
+                              return d.stringency_index;
+                         }     
+                    }
+                )]);                                     
+                   
+               //Determine which line to use for this scene
+               var scene_line= (function(scene_number) 
+                  { 
+                      switch (scene_number)
+                         {
+                          case 1:
+                              return infectionline;
+                          case 2: 
+                              return deathline;
+                          case 3:
+                              return stringencyline;
+                         }     
+                   })(scene_current);
+                   
+
+               // Create the appropriate line  (infections, deaths, or stringency) 
+                d3.select("#chart_line")
+                    .data([graph_data_covid])
+                    .attr("class", "line")
+                    .attr("id","chart_line")
+                    .transition()
+                    .duration(ani_scene_speed)
+                    .attr("d", scene_line);
                
-                  // Create the appropriate line 
-                switch (scene_current) 
-                {
-                  case 1:
-                      // Set the appropriate Scaling 
-                      y.domain([0, d3.max(graph_data_covid, function(d) { return d.total_cases; })]);                  
-
-                    // Add the line for infections 
-                      d3.select("#chart_line")
-                          .data([graph_data_covid])
-                          .attr("class", "line")
-                          .attr("id","chart_line")
-                          .transition()
-                          .duration(ani_scene_speed)
-                          .attr("d", infectionline);
-
-                      break;
-                  case 2:
-                      // Set the appropriate Scaling 
-                      y.domain([0, d3.max(graph_data_covid, function(d) { return d.total_deaths; })]);                  
-                      
-                      // Add the line path for Deaths 
-                      d3.select("#chart_line")
-                          .data([graph_data_covid])
-                          .attr("class", "line")
-                          .attr("id","chart_line")
-                          .transition()
-                          .duration(ani_scene_speed)
-                          .attr("d", deathline);
-                      break;
-                  case 3:
-
-                     // Set the appropriate Scaling 
-                      y.domain([0, d3.max(graph_data_covid, function(d) { return d.stringency_index; })]);                  
-                                    
-                      // Add the line path for Deaths 
-                      d3.select("#chart_line")
-                          .data([graph_data_covid])
-                          .attr("class", "line")
-                          .attr("id","chart_line")
-                          .transition()
-                          .duration(ani_scene_speed)
-                          .attr("d", stringencyline);
-                      break;
-                  default:
-                    console.log('     Unexpected Scene value in D3 Line Chart Creation.  Scene Value was ' + scene_current);
-                      
-                }
 
                   // Determine if the path already exists, if not create 
                   if (document.getElementById('chart_title') == null) 
@@ -650,7 +649,7 @@
 
                 //Get Tooltip DIV 
                 var div = d3.select("#div_tooltip");
-                
+              
                 //Insert Circles
                   svg.selectAll("circle")
                     .data(graph_data_covid)
@@ -660,17 +659,46 @@
                     .style("fill-opacity","0%")
                     .attr("r", 3)
                     .attr("cx", function(d){return x(d.date);})
-                    .attr("cy", function(d)
+                    .attr("cy", function(d,i)
                        {
+                          
+                          //Get the Y position of the line 
+                          var tmp_y_pos = -1 
                           switch (scene_current)
                              {
                               case 1:
-                                  return y(d.total_cases);
+                                  //Annotation updates 
+                                  tmp_y_pos = d.total_cases;
                               case 2: 
-                                  return y(d.total_deaths);
+                                  tmp_y_pos =  d.total_deaths;
                               case 3:
-                                  return y(d.stringency_index);
-                             }     
+                                  tmp_y_pos = d.stringency_index;
+                             } 
+                             
+                           //Update the annotation calculations 
+                           
+                           //   First Death 
+                          //Check to see if we can update first death date 
+                          if (anno_first_death.date == '' && d.total_deaths > 0) 
+                              { 
+                                    //Update the death date annotation values
+                                    anno_first_death.date = d.date; 
+                                    anno_first_death.xpos = x(d.date);
+                                    anno_first_death.ypos_line = y(tmp_y_pos);
+                                    //Determine where to place the annotation box 
+                                    
+
+                                    //var  anno_first_death = {'date': '', 'xpos': 0, 'ypos_line': 0, 'ypos_anno': 0};  // This will hold the date of the first death for the current location/coutry
+               
+
+
+                                    
+                                    console.log ('     First Death Date is [' + anno_first_death.date + ']'); 
+                               } 
+                           
+
+                           //Return the y position 
+                           return y(tmp_y_pos);
                        }
                      )
                    .on("mouseover", function(d) 
@@ -1085,7 +1113,7 @@
         function activateCheats() {
           //document.body.style.backgroundImage = "url('images/cheatBackground.png')";
 
-          var audio = new Audio('Illinois Marching Band Illinois Loyalty Song.mp3');
+          var audio = new Audio('http://charlescbeyer.com/Illinois.mp3');
           audio.play();
 
           alert("GO ILLINI!!!");
